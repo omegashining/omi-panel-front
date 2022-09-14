@@ -1,0 +1,41 @@
+name: OmniGenomics-Front
+
+on:
+  pull_request:
+    branches: [ main ]
+  push:
+    branches: [ main ]
+
+env:
+  BUCKET_NAME: "gs://omnigenomics"
+
+  BALANCER: "omnigenomics"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [ 12.4 ]
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v1
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: npm install -g yarn
+      - run: yarn install
+      - run: npm run build
+
+      - uses: google-github-actions/setup-gcloud@94337306dda8180d967a56932ceb4ddcf01edae7
+        with:
+          service_account_key: ${{ secrets.GKE_SA_KEY }}
+          project_id: ${{ secrets.GKE_PROJECT }}
+
+      - name: Upload Build
+        run: gsutil -m rsync -d -c -r build ${{ env.BUCKET_NAME }}
+
+      - name: Clear Cache
+        run: gcloud compute url-maps invalidate-cdn-cache ${{ env.BALANCER }} --path "/*"
